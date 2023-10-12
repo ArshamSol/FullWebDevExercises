@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
-
+import personService from './services/persons'
 
 
 const Filter = ({ searchTerm, handleSearchTermChange }) =>  {
@@ -32,13 +31,33 @@ const PersonForm = ({newName, newPhone, handleNameChange, handlePhoneChange, han
   )
 }
 
-const Persons = ({ persons }) => {
+const Persons = ({ persons , handleDeletePerson }) => {
   return (
     <ul>
     {persons.map((person, index) => (
-      <li key={index}>{person.name} {person.number}</li>
+      <li key={index}>{person.name} {person.number} 
+      <button onClick={() => handleDeletePerson(person.id)}>Delete</button>
+      </li>
     ))}
   </ul>
+  )
+}
+
+const Notification = ({ message }) => {
+  const notificationStyle = {
+    color: 'green',
+    backgroundColor: '#4CAF50',
+    fontSize: 20
+  }
+  
+  if (message === null) {
+    return null
+  }
+
+  return (
+    <div style={notificationStyle}>
+      {message}
+    </div>
   )
 }
 
@@ -47,32 +66,66 @@ const App = () => {
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [searchTerm, setSearchTerm] = useState('');
-
+  const [notificationMessage, setNotificationMessage] = useState('')
+  
   useEffect(() => {
-    axios
-      .get('http://localhost:3001/persons')
-      .then(response => {
+    personService
+    .getAll()
+    .then(response => {
         setPersons(response.data)
       })
   }, [])
   
-
+  const showNotification = (message) => {
+    setNotificationMessage(message)
+    setTimeout(() => {
+      setNotificationMessage(null)
+    }, 3000)
+  }
   const addPerson = (event) => {
-    event.preventDefault();
+    event.preventDefault()
 
     // Check if the newName already exists in the phonebook
-    if (persons.some(person => person.name === newName)) {
-      alert(`${newName} is already added to phonebook`);
-    } else {
+    const existingPerson = persons.find((person) => person.name === newName);
 
-      setPersons(persons.concat({ name: newName , number: newPhone }));
+    if (existingPerson) {
+      const confirmUpdate = window.confirm(
+        `${newName} is already in the phonebook. Replace the old number with a new one?`)
+        if (confirmUpdate) {
+          // Update the existing person's phone number
+          const updatedPerson = { ...existingPerson, number: newPhone }
+          personService.update(updatedPerson.id, updatedPerson)
+          .then(response => {
+          setPersons(persons.map((person) => (person.id === existingPerson.id ? updatedPerson : person)))
+          console.log(response)
+          showNotification( `Updated ${newName}`)
+          setNewName('')
+          setNewPhone('')
+          }).catch(error => {
+            alert(
+              `Information of '${newName}' was already deleted from server`
+            )
+            setNotes(notes.filter(n => n.id !== id))
+          })
+        }
       
+    }
+     else {
+    personService.create({ name: newName , number: newPhone })
+    .then(response => {
+      setPersons(persons.concat({ name: newName , number: newPhone }))
+      showNotification( `Added ${newName}`)
       setNewName('');
       setNewPhone('');
+     
+      console.log(response)
+    })
+
+      
     }
-  };
+  }
   
-  console.log(persons);
+
   const filteredPersons = persons.filter((person) =>
   person.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
@@ -88,9 +141,22 @@ const App = () => {
     setSearchTerm(event.target.value)
   }
 
+  const handleDelete = (id) => {
+    const personToDelete = persons.find((person) => person.id === id)
+  
+    const confirmDelete = window.confirm(`Delete ${personToDelete.name}?`)
+    if (confirmDelete) {
+      
+      personService.remove(id).then(response =>{
+        setPersons(persons.filter((person) => person.id !== id))
+      })
+    }
+  }
+
   return (
     <div>
       <h2>Phonebook</h2>
+      <Notification message={notificationMessage} />
       <Filter
         searchTerm={searchTerm}
         handleSearchTermChange={handleSearchTermChange}
@@ -106,7 +172,9 @@ const App = () => {
       />
 
       <h2>Numbers</h2>
-      <Persons persons={filteredPersons} />
+      <Persons persons={filteredPersons}
+        handleDeletePerson={handleDelete} />
+     
     </div>
   )
 }
